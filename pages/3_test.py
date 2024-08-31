@@ -3,20 +3,22 @@ import time
 
 # Function to multiply the input number with numbers from 1 to 20
 def multiply_number(input_number):
-    status_placeholder = st.empty()  # Placeholder for status updates
-    results = []
+    results_placeholder = st.empty()  # Placeholder for results
 
+    results = []
     for i in range(1, 21):
         result = input_number * i
-        results.append(result)
+        results.append(f"{input_number} x {i} = {result}")
         
-        # Update status on the page
-        status_placeholder.write(f"{input_number} x {i} = {result}")
+        # Update the page with all results so far using st.success
+        with results_placeholder.container():
+            for res in results:
+                st.success(res)
         
         time.sleep(1)  # Simulate processing time
-    
+
     # Final message after the loop completes
-    status_placeholder.write("Multiplication completed!")
+    st.write("Multiplication completed!")
 
 # Streamlit app
 st.title("Multiplication Status Tracker")

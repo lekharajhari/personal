@@ -29,18 +29,18 @@ def main():
 
         available_balance_placeholder = st.empty()
         integration_off_placeholder = st.empty()
-        invalid_key_placeholder = st.empty()
+        invalid_key_count_placeholder = st.empty()
 
         available_balance_data = []
         integration_off_data = []
-        invalid_key_data = []
+        invalid_key_count = 0
 
         def process_key(secret_key):
             result = get_sk_info(secret_key)
             if result:
                 if 'error' in result:
                     if result['error'] == 'Failed to fetch account data':
-                        return ('invalid', f"Secret Key: {secret_key} - Status: Invalid key")
+                        return ('invalid', None)
                     elif result['error'] == 'Your account cannot currently make live charges.':
                         return ('integration_off', 
                             f"Secret Key: {secret_key} - Status: Integration off - "
@@ -48,7 +48,7 @@ def main():
                             f"Default Currency: {result.get('default_currency', 'Not available')}"
                         )
                     else:
-                        return ('invalid', f"Secret Key: {secret_key} - Status: Error - Error: {result['error']}")
+                        return ('invalid', None)
                 else:
                     if 'available_balance' in result:
                         return ('available_balance', 
@@ -59,9 +59,9 @@ def main():
                             f"Pending Balance: {result.get('pending_balance', 'Not available')}"
                         )
                     else:
-                        return ('invalid', f"Secret Key: {secret_key} - Status: Key is not present or available balance is not available.")
+                        return ('invalid', None)
             else:
-                return ('invalid', f"Secret Key: {secret_key} - Status: Failed to retrieve information about the secret key.")
+                return ('invalid', None)
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
             results = []
@@ -78,8 +78,8 @@ def main():
                 available_balance_data.append(message)
             elif status == 'integration_off':
                 integration_off_data.append(message)
-            else:
-                invalid_key_data.append(message)
+            elif status == 'invalid':
+                invalid_key_count += 1
 
         with available_balance_placeholder.container():
             for data in available_balance_data:
@@ -89,9 +89,8 @@ def main():
             for data in integration_off_data:
                 st.warning(data)
 
-        with invalid_key_placeholder.container():
-            for data in invalid_key_data:
-                st.error(data)
+        with invalid_key_count_placeholder.container():
+            st.write(f"Invalid Keys: {invalid_key_count}")
 
 if __name__ == "__main__":
     main()

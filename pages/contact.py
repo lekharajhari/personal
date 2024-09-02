@@ -1,8 +1,8 @@
 import streamlit as st
 import requests
 
-# FastAPI base URL
-api_url = "http://127.0.0.1:8000/contacts"
+# Updated FastAPI base URL
+api_url = "https://code-api-q53u.onrender.com/contacts"
 
 st.title("Contacts Management App")
 

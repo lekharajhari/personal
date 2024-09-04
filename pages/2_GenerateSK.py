@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+import concurrent.futures
 
 def get_sk_info(secret_key: str) -> dict:
     url = f"https://api.voidex.dev/api/skinfo?sk={secret_key}"
@@ -19,33 +20,38 @@ def main():
         file_content = file_upload.read().decode("utf-8")
         secret_keys = [line.strip() for line in file_content.splitlines()]
 
-        # Placeholders for live updates
+        total_keys = len(secret_keys)
+        st.write(f"Total Keys: {total_keys}")
+
+        # Progress bar and progress text
+        progress_bar = st.progress(0)
+        progress_text = st.empty()
+
         available_balance_placeholder = st.empty()
         integration_off_placeholder = st.empty()
-        invalid_key_placeholder = st.empty()
+        invalid_key_count_placeholder = st.empty()
 
         available_balance_data = []
         integration_off_data = []
-        invalid_key_data = []
+        invalid_key_count = 0
 
-        for secret_key in secret_keys:
+        def process_key(secret_key):
             result = get_sk_info(secret_key)
-
             if result:
                 if 'error' in result:
                     if result['error'] == 'Failed to fetch account data':
-                        invalid_key_data.append(f"Secret Key: {secret_key} - Status: Invalid key")
+                        return ('invalid', None)
                     elif result['error'] == 'Your account cannot currently make live charges.':
-                        integration_off_data.append(
+                        return ('integration_off', 
                             f"Secret Key: {secret_key} - Status: Integration off - "
                             f"Country: {result.get('country', 'Not available')} - "
                             f"Default Currency: {result.get('default_currency', 'Not available')}"
                         )
                     else:
-                        invalid_key_data.append(f"Secret Key: {secret_key} - Status: Error - Error: {result['error']}")
+                        return ('invalid', None)
                 else:
                     if 'available_balance' in result:
-                        available_balance_data.append(
+                        return ('available_balance', 
                             f"Secret Key: {secret_key} - Status: Key is live - "
                             f"Available Balance: {result['available_balance']} - "
                             f"Country: {result.get('country', 'Not available')} - "
@@ -53,22 +59,28 @@ def main():
                             f"Pending Balance: {result.get('pending_balance', 'Not available')}"
                         )
                     else:
-                        invalid_key_data.append(f"Secret Key: {secret_key} - Status: Key is not present or available balance is not available.")
+                        return ('invalid', None)
             else:
-                invalid_key_data.append(f"Secret Key: {secret_key} - Status: Failed to retrieve information about the secret key.")
+                return ('invalid', None)
 
-            # Update live on the page
-            with available_balance_placeholder.container():
-                for data in available_balance_data:
-                    st.success(data)
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            for idx, result in enumerate(executor.map(process_key, secret_keys), 1):
+                status, message = result
 
-            with integration_off_placeholder.container():
-                for data in integration_off_data:
-                    st.warning(data)
+                # Update progress
+                progress_percentage = idx / total_keys
+                progress_bar.progress(progress_percentage)
+                progress_text.write(f"Processing key {idx} of {total_keys}")
 
-            with invalid_key_placeholder.container():
-                for data in invalid_key_data:
-                    st.error(data)
+                if status == 'available_balance':
+                    available_balance_data.append(message)
+                    available_balance_placeholder.success("Available Balance Keys:\n" + "\n".join(available_balance_data))
+                elif status == 'integration_off':
+                    integration_off_data.append(message)
+                    integration_off_placeholder.warning("Integration Off Keys:\n" + "\n".join(integration_off_data))
+                elif status == 'invalid':
+                    invalid_key_count += 1
+                    invalid_key_count_placeholder.write(f"Invalid Keys: {invalid_key_count}")
 
 if __name__ == "__main__":
     main()
